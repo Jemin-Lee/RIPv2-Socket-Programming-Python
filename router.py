@@ -55,9 +55,8 @@ class RIP_demon(object):
     
 
     def recieve_message(self):
-        while True:
-            message, _, _ = select.select(self.ingress_sockets, [], [], 180)
-            current_time = time.time()
+        message, _, _ = select.select(self.ingress_sockets, [], [], 180)
+        current_time = time.time()
     
 
     def show_routes(self):
