@@ -14,7 +14,8 @@ class RIP_demon(object):
         self.router_id = None
         self.ingress = []
         self.ingress_sockets = []
-        self.egress = []
+        self.neighbor_port = []
+        self.neighbor_id = []
         self.output_lines = []
         self.config = configparser.ConfigParser()
     
@@ -39,57 +40,59 @@ class RIP_demon(object):
                 self.ingress.append(value)
 
             for key,value in self.config.items("output-ports"):
+                self.output_lines.append(value)
                 line_in_output = value.split('-')
-                if line_in_output[1] == "1":
-                    self.output_lines.append(value + "-Conn.")
-                else:
-                    self.output_lines.append(value + "-RIP")
-                self.egress.append(line_in_output[2])
+                self.neighbor_id.append(line_in_output[0])
+                self.neighbor_port.append(line_in_output[2])
+                
             
-            # print(self.router_id)
-            # print(self.ingress)
-            # print(self.egress)
-            # print(self.output_lines)
-            # 1
-            # ['1102', '1106', '1107']
-            # ['2001', '6001', '8001']
-            # ['2-1-2001-Conn.', '6-1-6001-Conn.', '8-1-8001-Conn.']
-            
-    
+
     def open_ports(self):
         for port in self.ingress:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.bind(("127.0.0.1", int(port)))
             self.ingress_sockets.append(sock)
     
+
     def recieve_message(self):
-        message, _, _ = select.select(self.ingress_sockets, [], [], 15)
-        current_time = time.time()
-        
+        while True:
+            message, _, _ = select.select(self.ingress_sockets, [], [], 180)
+            current_time = time.time()
     
+
     def show_routes(self):
         print('Router ID: ', self.router_id)
-        self.config.items("input-ports")
         for line in self.output_lines:
             line_in_output = line.split('-')
-            
+
             ID = line_in_output[0]
             metric = line_in_output[1]
             out_port = line_in_output[2]
-            route_type = line_in_output[3]
-            if route_type == "Conn.":
-                print(route_type + ' Router ' + ID + ', is directly connected, Port ' + out_port + ', Metric ' + metric)
-            elif route_type == "RIP":
-                print(route_type + ', Router ' + ID + ', is directly connected, Port ' + out_port + ', Metric ' + metric)
+            next_hop = line_in_output[3]
+
+            if next_hop == "N/A":
+                print(ID + ' directly connected, ' + out_port)
+            else:
+                print(ID + ' reachable via Port ' + out_port + ', Next Hop: ' + next_hop + ' Metric ' + metric)
 
 
     def create_message(self):
-        return
+        '''
+        make copy of the current routing config
+        '''
+
 
     def send_message(self):
+        '''
+        send to neighbors
+        implement Split Horizon
+        '''
         return
 
     def update_table(self):
+        '''
+        update routing config
+        '''
         return
 
     
@@ -102,7 +105,7 @@ def main():
     demon.load_startup()
     demon.open_ports()
     demon.show_routes()
-    
+
     #always,
     '''
     demon.recieve_message()
@@ -112,9 +115,12 @@ def main():
     '''
     demon.create_message()
     demon.send_message()
-    demon.update_table()
     '''
 
+    #every 180 seconds
+    '''
+    demon.update_table()
+    '''
     # threading.Timer(10, demon.send_message).start()
     
 
