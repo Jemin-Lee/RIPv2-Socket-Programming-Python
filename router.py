@@ -77,13 +77,22 @@ class RIP_demon(object):
                 print(ID + ' reachable via Port ' + out_port + ', Next Hop: ' + next_hop + ' Metric ' + metric)
 
 
-    def create_message(self):
+    def create_message(tab):
         '''
         update self.output_lines
         update with the config files, or
         update with the seperate source
         '''
-
+        table = tab 
+        version = "2" 
+        head_mes = version + ','+ str(self.router_id)
+   
+        for i in table:
+            value = table[i]
+            head_mes += ',' + str(i) + ','
+            metric = str(value[1]) if i not in table.values() else 16
+            head_mes += metric
+        return  head_mes
 
     def send_message(self):
         '''
@@ -105,6 +114,7 @@ class RIP_demon(object):
         '''
         update routing config
         '''
+       
         return
 
     def invalid_table(self):
