@@ -3,7 +3,7 @@ import pickle
 import sys
 import select
 import time
-import threading
+from threading import Timer
 import socket
 
 
@@ -18,6 +18,7 @@ class RIP_demon(object):
         self.neighbor_id = []
         self.output_lines = []
         self.config = configparser.ConfigParser()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
 
     def load_startup(self):
@@ -49,13 +50,13 @@ class RIP_demon(object):
 
     def open_ports(self):
         for port in self.ingress:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.bind(("127.0.0.1", int(port)))
-            self.ingress_sockets.append(sock)
+            
+            self.sock.bind(("127.0.0.1", int(port)))
+            self.ingress_sockets.append(self.sock)
     
 
     def recieve_message(self):
-        message, _, _ = select.select(self.ingress_sockets, [], [], 180)
+        message, _, _ = select.select(self.ingress_sockets, [], [], 30)
         current_time = time.time()
     
 
@@ -86,6 +87,9 @@ class RIP_demon(object):
         send to neighbors
         implement Split Horizon
         '''
+        for port in self.neighbor_port:
+            update_message = pickle.dumps(self.output_lines)
+
         return
 
     def update_table(self):
@@ -93,6 +97,19 @@ class RIP_demon(object):
         update routing config
         '''
         return
+
+    def invalid_table(self):
+        '''
+        poison reverse invalid routes
+        '''
+
+    def flush_table(self):
+        '''
+        remove invalid routes
+        '''
+        return
+    
+
 
     
 def main():
@@ -105,23 +122,20 @@ def main():
     demon.open_ports()
     demon.show_routes()
 
-    #always,
-    '''
-    demon.recieve_message()
-    '''
 
-    #every 30 seconds,
-    '''
-    demon.create_message()
-    demon.send_message()
-    '''
 
-    #every 180 seconds
-    '''
-    demon.update_table()
-    '''
-    # threading.Timer(10, demon.send_message).start()
-    
+    def update_timer():
+        demon.create_message()
+        demon.send_message()
+        demon.update_table()
+        Timer(30, update_timer).start()
 
-    
+    def invalid_timer():
+        demon.invalid_table()
+        Timer(180, invalid_timer).start()
+        
+    def flush_timer():
+        demon.flush_table()
+        Timer(60, flush_timer).start()
+
 main()
