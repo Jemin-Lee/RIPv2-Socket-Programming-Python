@@ -5,6 +5,7 @@ import select
 import time
 from threading import Timer
 import socket
+from datetime import datetime
 
 
 
@@ -16,9 +17,10 @@ class RIP_demon(object):
         self.ingress_sockets = []
         self.neighbor_port = []
         self.neighbor_id = []
-        self.output_lines = []
+        self.output_lines = []  #still needed for show route function
         self.config = configparser.ConfigParser()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.now = datetime.now().time()
     
 
     def load_startup(self):
@@ -50,7 +52,6 @@ class RIP_demon(object):
 
     def open_ports(self):
         for port in self.ingress:
-            
             self.sock.bind(("127.0.0.1", int(port)))
             self.ingress_sockets.append(self.sock)
     
@@ -78,7 +79,9 @@ class RIP_demon(object):
 
     def create_message(self):
         '''
-        make copy of the current routing config
+        update self.output_lines
+        update with the config files, or
+        update with the seperate source
         '''
 
 
@@ -88,7 +91,13 @@ class RIP_demon(object):
         implement Split Horizon
         '''
         for port in self.neighbor_port:
+
+            #sending router's whole output contents in pickle
             update_message = pickle.dumps(self.output_lines)
+
+            self.sock.sendto(update_message, ("127.0.0.1", port))
+            print(self.now)
+            print("Update message sent")
 
         return
 
@@ -108,22 +117,14 @@ class RIP_demon(object):
         remove invalid routes
         '''
         return
+
+    def triggered_update(self):
+        return
     
 
 
     
 def main():
-    print('RIP Router Demon')
-    print('RIP Version: 2')
-    config_file = sys.argv[1]
-    demon = RIP_demon(config_file)
-
-    demon.load_startup()
-    demon.open_ports()
-    demon.show_routes()
-
-
-
     def update_timer():
         demon.create_message()
         demon.send_message()
@@ -137,5 +138,18 @@ def main():
     def flush_timer():
         demon.flush_table()
         Timer(60, flush_timer).start()
+    
+    print('RIP Router Demon')
+    print('RIP Version: 2')
+    config_file = sys.argv[1]
+    demon = RIP_demon(config_file)
+
+    demon.load_startup()
+    demon.open_ports()
+    demon.show_routes()
+
+
+
+    
 
 main()
