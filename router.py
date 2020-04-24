@@ -77,7 +77,7 @@ class RIP_demon(object):
                 print(ID + ' reachable via Port ' + out_port + ', Next Hop: ' + next_hop + ' Metric ' + metric)
 
 
-    def create_message(tab):
+    def create_message(self, tab):
         '''
         update self.output_lines
         update with the config files, or
@@ -135,24 +135,26 @@ class RIP_demon(object):
 
     
 def main():
-    def update_timer():
-        demon.create_message()
-        demon.send_message()
-        demon.update_table()
-        Timer(30, update_timer).start()
+    
 
-    def invalid_timer():
-        demon.invalid_table()
-        Timer(180, invalid_timer).start()
+    # def invalid_timer():
+    #     demon.invalid_table()
+    #     Timer(180, invalid_timer).start()
         
-    def flush_timer():
-        demon.flush_table()
-        Timer(60, flush_timer).start()
+    # def flush_timer():
+    #     demon.flush_table()
+    #     Timer(60, flush_timer).start()
     
     print('RIP Router Demon')
     print('RIP Version: 2')
     config_file = sys.argv[1]
     demon = RIP_demon(config_file)
+
+    def update_timer():
+        demon.create_message()
+        demon.send_message()
+        demon.update_table()
+        Timer(30, update_timer).start()
 
     demon.load_startup()
     demon.open_ports()
