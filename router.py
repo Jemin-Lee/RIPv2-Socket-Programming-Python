@@ -76,7 +76,7 @@ class RIP_demon(object):
                 print(ID + ' reachable via Port ' + out_port + ', Next Hop: ' + next_hop + ' Metric ' + metric)
 
 
-    def create_message(tab, port):
+    def create_message(tab):
         '''
         make copy of the current routing config
         '''
