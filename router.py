@@ -17,10 +17,9 @@ class RIP_demon(object):
         self.ingress_sockets = []
         self.neighbor_port = []
         self.neighbor_id = []
-        self.output_lines = []  #still needed for show route function
+        self.routes = {}
+        self.message = []
         self.config = configparser.ConfigParser()
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.now = datetime.now().time()
     
 
     def load_startup(self):
@@ -37,36 +36,30 @@ class RIP_demon(object):
             return
         
         else:
-            self.router_id = self.config.get("router-id", "id")
+            self.router_id = int(self.config.get("router-id", "id"))
 
             for key,value in self.config.items("input-ports"):
                 self.ingress.append(value)
-
+            
             for key,value in self.config.items("output-ports"):
-                self.output_lines.append(value)
                 line_in_output = value.split('-')
                 self.neighbor_id.append(line_in_output[0])
                 self.neighbor_port.append(line_in_output[2])
-                
             
 
     def open_ports(self):
         for port in self.ingress:
-            self.sock.bind(("127.0.0.1", int(port)))
-            self.ingress_sockets.append(self.sock)
-    
-
-    def recieve_message(self):
-        message, _, _ = select.select(self.ingress_sockets, [], [], 30)
-        current_time = time.time()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind(("127.0.0.1", int(port)))
+            self.ingress_sockets.append(sock)
     
 
     def show_routes(self):
         print('Router ID: ', self.router_id)
-        for line in self.output_lines:
-            line_in_output = line.split('-')
+        for key, value in self.config.items("output-ports"):
+            line_in_output = value.split('-')
 
-            ID = line_in_output[0]
+            ID = key
             metric = line_in_output[1]
             out_port = line_in_output[2]
             next_hop = line_in_output[3]
@@ -77,59 +70,121 @@ class RIP_demon(object):
                 print(ID + ' reachable via Port ' + out_port + ', Next Hop: ' + next_hop + ' Metric ' + metric)
 
 
-    def create_message(self, tab):
+    def create_message(self):
         '''
         update self.output_lines
         update with the config files, or
         update with the seperate source
         '''
-        table = tab 
-        version = "2" 
-        head_mes = version + ','+ str(self.router_id)
-   
-        for i in table:
-            value = table[i]
-            head_mes += ',' + str(i) + ','
-            metric = str(value[1]) if i not in table.values() else 16
-            head_mes += metric
-        return  head_mes
+        
+        sender = {}
+        sender.update({self.router_id:"update message"})
+        for key,value in self.config.items("output-ports"):
+            self.routes.update({key:value})
+        
+        self.message.append(sender)
+        self.message.append(self.routes)
+
 
     def send_message(self):
         '''
         send to neighbors
         implement Split Horizon
         '''
+        now = datetime.now().time()
+
+        #create message
+        update_message = pickle.dumps(self.message)
+
         for port in self.neighbor_port:
-
             #sending router's whole output contents in pickle
-            update_message = pickle.dumps(self.output_lines)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.sendto(update_message, ("127.0.0.1", int(port)))
+            print("Update message sent to port " + port + ", " + str(now))
 
-            self.sock.sendto(update_message, ("127.0.0.1", port))
-            print(self.now)
-            print("Update message sent")
 
-        return
-
-    def update_table(self):
+    def recieve_message(self):
         '''
         update routing config
+        update output config
         '''
-       
+        def update_table(route, sender):
+            #write on our config file with key = reachable id and value = altered route line
+            current_table = dict(self.config.items("output-ports"))
+
+            sender_id = int(list(sender.keys())[0])
+
+            route_data = route.split("-")
+            r_id = int(route_data[0])
+            cost = int(route_data[1])
+            port = int(route_data[2])
+            next_hop = route_data[3]
+
+            print("message's router id = "+ r_id)
+            print("my router's id = "+ self.router_id)
+            print("two are equal {}".format(r_id == int(self.router_id)))
+            if r_id == self.router_id:
+                return
+            else:
+                if r_id in current_table:
+                    current_route_data = current_table[r_id].split('-')
+                    current_cost = current_route_data[1]
+                    current_port = current_route_data[2]
+
+                    if current_table[r_id] <= cost:
+                        return
+                    else:
+                        new_cost = current_cost + cost
+                        new_route = '{}-{}-{}-{}'.format(r_id, new_cost, current_port, sender_id)
+                        self.config.set("output-ports", r_id, new_route)
+                        return
+                else:
+                    new_route = '{}-{}-{}-{}'.format(r_id, cost, port, sender_id)
+                    print(new_route)
+                    self.config.set("output-ports", r_id, new_route)
+                    return
+
+
+
+        message, _, _ = select.select(self.ingress_sockets, [], [], 30)
+        current_time = time.time()
+        for s in message:
+            data, addr = s.recvfrom(1024)
+            message_data = (pickle.loads(data))
+
+            sender = message_data[0]
+            update = message_data[1]
+            
+            for r_id in update:
+                if r_id == self.router_id:
+                    #drop the route destined to myself
+                    continue
+                else:
+                    update_table(update[r_id], sender)
         return
 
-    def invalid_table(self):
-        '''
-        poison reverse invalid routes
-        '''
 
-    def flush_table(self):
-        '''
-        remove invalid routes
-        '''
-        return
 
-    def triggered_update(self):
-        return
+
+
+
+
+
+    # def invalid_table(self):
+    #     '''
+    #     poison reverse invalid routes
+    #     '''
+
+
+    # def flush_table(self):
+    #     '''
+    #     remove invalid routes
+    #     '''
+    #     return
+
+
+    # def triggered_update(self):
+    #     return
     
 
 
@@ -145,6 +200,8 @@ def main():
     #     demon.flush_table()
     #     Timer(60, flush_timer).start()
     
+
+    
     print('RIP Router Demon')
     print('RIP Version: 2')
     config_file = sys.argv[1]
@@ -153,15 +210,15 @@ def main():
     def update_timer():
         demon.create_message()
         demon.send_message()
-        demon.update_table()
+        demon.recieve_message()
         Timer(30, update_timer).start()
+
+    # def listen():
+    #     while True:
+    #         demon.recieve_message()
 
     demon.load_startup()
     demon.open_ports()
     demon.show_routes()
-
-
-
-    
-
+    update_timer()
 main()
