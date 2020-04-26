@@ -55,6 +55,7 @@ class RIP_demon(object):
     
 
     def show_routes(self):
+        print('Router ID: {}, Show Routs'.format(self.router_id))
         print('Router ID: ', self.router_id)
         for key, value in self.config.items("output-ports"):
             line_in_output = value.split('-')
@@ -89,8 +90,9 @@ class RIP_demon(object):
     def send_message(self):
         '''
         send to neighbors
-        implement Split Horizon
+        
         '''
+        
         now = datetime.now().time()
 
         #create message
@@ -107,42 +109,48 @@ class RIP_demon(object):
         '''
         update routing config
         update output config
+        implement Split Horizon (kinda, filters route to itself, could be better if the message itself doesn't contain that bit, yeah)
         '''
+        print("listening for messages...")
         def update_table(route, sender):
             #write on our config file with key = reachable id and value = altered route line
             current_table = dict(self.config.items("output-ports"))
 
-            sender_id = int(list(sender.keys())[0])
+            sender_id = list(sender.keys())[0]
 
             route_data = route.split("-")
-            r_id = int(route_data[0])
-            cost = int(route_data[1])
-            port = int(route_data[2])
+            r_id = route_data[0]
+            cost = route_data[1]
+            port = route_data[2]
             next_hop = route_data[3]
 
-            print("message's router id = "+ r_id)
-            print("my router's id = "+ self.router_id)
-            print("two are equal {}".format(r_id == int(self.router_id)))
-            if r_id == self.router_id:
-                return
-            else:
-                if r_id in current_table:
-                    current_route_data = current_table[r_id].split('-')
-                    current_cost = current_route_data[1]
-                    current_port = current_route_data[2]
 
-                    if current_table[r_id] <= cost:
-                        return
-                    else:
-                        new_cost = current_cost + cost
-                        new_route = '{}-{}-{}-{}'.format(r_id, new_cost, current_port, sender_id)
-                        self.config.set("output-ports", r_id, new_route)
-                        return
-                else:
-                    new_route = '{}-{}-{}-{}'.format(r_id, cost, port, sender_id)
-                    print(new_route)
-                    self.config.set("output-ports", r_id, new_route)
+            to_sender_route = current_table['router{}'.format(sender_id)].split('-')
+            to_sender_cost = to_sender_route[1]
+            potential_new_cost = int(to_sender_cost) + int(cost)
+
+
+            router_num = 'router{}'.format(r_id)
+            if router_num in current_table:
+                current_route_data = current_table[router_num].split('-')
+                
+                current_cost = current_route_data[1]
+                current_port = current_route_data[2]
+
+                if int(current_cost) <= potential_new_cost:
                     return
+                else:
+                    new_cost = potential_new_cost
+                    new_route = '{}-{}-{}-{}'.format(r_id, new_cost, port, sender_id)
+                    print('new route : {}'.format(new_route))
+                    self.config.set("output-ports", router_num, new_route)
+                    return
+            else:
+                new_cost = potential_new_cost
+                new_route = '{}-{}-{}-{}'.format(r_id, new_cost, port, sender_id)
+                print('new route : {}'.format(new_route))
+                self.config.set("output-ports", router_num, new_route)
+                return
 
 
 
@@ -152,13 +160,15 @@ class RIP_demon(object):
             data, addr = s.recvfrom(1024)
             message_data = (pickle.loads(data))
 
+            #[{'2': 'update message'}, {'router1': '1-1-1102-N/A', 'router3': '3-2-3002-N/A'}]
             sender = message_data[0]
             update = message_data[1]
             
             for r_id in update:
-                if r_id == self.router_id:
+                router = 'router{}'.format(self.router_id)
+                if router == r_id:
                     #drop the route destined to myself
-                    continue
+                    pass
                 else:
                     update_table(update[r_id], sender)
         return
@@ -208,14 +218,15 @@ def main():
     demon = RIP_demon(config_file)
 
     def update_timer():
+        demon.recieve_message()
         demon.create_message()
         demon.send_message()
-        demon.recieve_message()
+        demon.show_routes()
         Timer(30, update_timer).start()
 
-    # def listen():
-    #     while True:
-    #         demon.recieve_message()
+    def listen():
+        while True:
+            demon.recieve_message()
 
     demon.load_startup()
     demon.open_ports()
