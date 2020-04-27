@@ -69,7 +69,7 @@ class RIP_demon(object):
             out_port = line_in_output[2]
             next_hop = line_in_output[3]
 
-            if out_port == "N/A" and next_hop == "N/A":
+            if metric == 16 and out_port is "N/A" and next_hop is "N/A":
                 print('route to router {} invalidated'.format(key))
             else:
                 if next_hop == "N/A":
