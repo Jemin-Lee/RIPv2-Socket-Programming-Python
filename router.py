@@ -64,13 +64,14 @@ class RIP_demon(object):
         for key, value in self.config.items("output-ports"):
             line_in_output = value.split('-')
 
-            ID = key
+            ID = line_in_output[0]
             metric = line_in_output[1]
             out_port = line_in_output[2]
             next_hop = line_in_output[3]
 
-            if metric == 16 and out_port is "N/A" and next_hop is "N/A":
-                print('route to router {} invalidated'.format(key))
+
+            if metric == "16" and out_port == "N/A" and next_hop == "N/A":
+                print('route to router {} invalidated'.format(ID))
             else:
                 if next_hop == "N/A":
                     print(ID + ' directly connected, ' + out_port)
@@ -104,10 +105,12 @@ class RIP_demon(object):
         #create message
         update_message = pickle.dumps(self.message)
 
+        print("==========Send Message===========")
         for port in self.neighbor_port:
             #sending router's whole output contents in pickle
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(update_message, ("127.0.0.1", int(port)))
+            
             print("Update message sent to port " + port + ", " + str(now))
 
 
@@ -117,11 +120,12 @@ class RIP_demon(object):
         update output config
         implement Split Horizon (kinda, filters route to itself, could be better if the message itself doesn't contain that bit, yeah)
         '''
+        print("==========Ports Open===========")
         print("listening for messages...")
         def update_table(route, sender):
             #write on our config file with key = reachable id and value = altered route line
             print("===============Update Routes=============")
-            print('updating {}'.format(sender))
+            print('updating route, message from {}'.format(sender))
             current_table = dict(self.config.items("output-ports"))
 
             sender_id = list(sender.keys())[0]
@@ -133,6 +137,7 @@ class RIP_demon(object):
             next_hop = route_data[3]
 
             router_num = 'router{}'.format(r_id)
+            sender_id_num = 'router{}'.format(sender_id)
 
             to_sender_route = current_table['router{}'.format(sender_id)].split('-')
             to_sender_cost = to_sender_route[1]
@@ -142,11 +147,14 @@ class RIP_demon(object):
             def flush_(router):
                 now = datetime.now().time()
                 self.config.remove_option("output-ports", router)
+                with open(self.file, 'w') as configfile:
+                    self.config.write(configfile)
                 print("===========Flush Route===========")
                 print(now)
                 print('route to {} flushed'.format(router))
                 return
             flush_timer = Timer(60, flush_,[router_num])
+            sender_flush_timer = Timer(60, flush_,[sender_id_num])
 
             def invalidate_(router):
                 now = datetime.now().time()
@@ -154,12 +162,21 @@ class RIP_demon(object):
                 print("===========Invalidation============")
                 print(now)
                 print('route invalidated: {}'.format(invalidated_route))
+
                 self.config.set("output-ports", router, invalidated_route)
+                with open(self.file, 'w') as configfile:
+                    self.config.write(configfile)
+
                 flush_timer.start()
                 return
             invalid_timer = Timer(180, invalidate_,[router_num])
-            
+            sender_invalid_timer = Timer(180, invalidate_,[sender_id_num])
 
+
+            sender_invalid_timer.cancel()
+            sender_flush_timer.cancel()
+            sender_invalid_timer.start()
+            print('Invalid timer started for {}'.format(sender_id_num))
 
             if router_num in current_table:
                 current_route = current_table[router_num]
@@ -167,14 +184,18 @@ class RIP_demon(object):
                 
                 current_cost = current_route_data[1]
                 current_port = current_route_data[2]
+                current_next_hop = current_route_data[3]
 
-                if current_route_data[3] is "N/A":
+                if current_next_hop == "N/A":
+                    print("here")
+                    print(route)
                     pass
                 else:
                     if int(current_cost) <= potential_new_cost:
                         invalid_timer.cancel()
                         flush_timer.cancel()
                         invalid_timer.start()
+                        print("No new routes")
                         return
                     else:
                         new_cost = potential_new_cost
@@ -191,7 +212,7 @@ class RIP_demon(object):
                 print('new route : {}'.format(new_route))
                 self.config.set("output-ports", router_num, new_route)
                 invalid_timer.start()
-                print('invalid timer set for {}'.format(router_num))
+                print('Invalid timer started for {}'.format(router_num))
                 return
             
         def triggered_update():
@@ -203,6 +224,7 @@ class RIP_demon(object):
         message, _, _ = select.select(self.ingress_sockets, [], [], 30)
         current_time = time.time()
         for s in message:
+            print("===============Ports Closed===============")
             data, addr = s.recvfrom(1024)
             message_data = (pickle.loads(data))
 
