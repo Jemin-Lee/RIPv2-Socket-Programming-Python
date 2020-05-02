@@ -33,7 +33,10 @@ class routeTimer(object):
         '''
         stop the timer
         '''
-        self.timer.cancel()
+        if self.timer is not None:
+            self.timer.cancel()
+        else:
+            pass
 
     def start(self):
         '''
@@ -54,8 +57,6 @@ class RIP_demon(object):
         self.neighbor_port = []
         self.neighbor_id = []
         self.routes = {}
-
-        self.message = []
 
 
         self.triggered_message = []
@@ -137,6 +138,11 @@ class RIP_demon(object):
         routes = {}
         source.update({self.router_id:"update"})
         for key,value in self.config.items("output-ports"):
+            '''
+            exclude if those routes were learnt, or configured via a port, 
+            that the message is destined to the same port.
+            (implementing split horizon)
+            '''
             if dest_port in value:
                 pass
             else:
@@ -155,14 +161,13 @@ class RIP_demon(object):
 
         print("==========Send Message===========")
         for port in self.neighbor_port:
-            #create message
+            #create message 
             message = self.create_message(port)
             update_message = pickle.dumps(message)
 
             #sending router's whole output contents in pickle
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(update_message, ("127.0.0.1", int(port)))
-            print(sock.getsockname())
             print("Update message sent to port " + port + ", " + str(now))
 
 
@@ -178,7 +183,7 @@ class RIP_demon(object):
         print("listening for messages...")
 
         #wait for 30 seconds for messages
-        message, _, _ = select.select(self.ingress_sockets, [], [], 30)
+        message, _, _ = select.select(self.ingress_sockets, [], [], 12)
 
         #current set to now
         current_time = time.time()
@@ -197,6 +202,7 @@ class RIP_demon(object):
             '''
             self.sender_id = list(message_data[0].keys())[0]
             update = message_data[1]
+            print('message from {},'.format(self.sender_id))
             print(update)
 
             for r_id in update:
@@ -222,12 +228,10 @@ class RIP_demon(object):
         '''
         now = datetime.now().time()
         invalidated_route = '{}-{}-{}-{}'.format(router[-1], 16, 'N/A', 'N/A')
-        print("===========Invalidation============")
         self.config.set("output-ports", router, invalidated_route)
         print(now)
         print('route invalidated: {}'.format(invalidated_route))
         #call flush timer
-        self.flush_timer[router] = routeTimer(60, self.flush_, router)
         self.flush_timer[router].start()
 
 
@@ -273,10 +277,9 @@ class RIP_demon(object):
         sender_router = 'router{}'.format(self.sender_id)
         route_message_router = 'router{}'.format(route_message_data[0])
 
-        potential_new_cost = int(route_message_data[1]) + int(to_sender_route_data[1])
+        potential_new_cost = int(route_message_data[1]) + int(to_sender_route_data[1]) + 1 #hop count 1
 
         #write on our config file with key = reachable id and value = altered route line
-        print("===============Update Routes=============")
         print('updating route, message from {}'.format(sender_router))
 
         router_id = route_message_data[0]
@@ -289,8 +292,7 @@ class RIP_demon(object):
             current_route = current_table[route_message_router]
             current_route_data = current_route.split('-')
 
-            if current_route_data[3] == "N/A":
-                print("the router is directly connected")
+            if current_route_data[2] != "N/A" and current_route_data[3] == "N/A":
                 pass
             else:
                 #it compares the cost, if current entry is better,
@@ -309,23 +311,22 @@ class RIP_demon(object):
                 turn off the other router,
                 and then see if the router invalidate, and flush the aged route.
                 '''
-                #check if the entry router is in flush_timer
-                if route_message_router in self.flush_timer.keys():
-                    #if so, cancel the timer
-                    self.flush_timer[route_message_router].cancel()
-                #if not, reset the invalid timer anyway
+                #entry router is in flush_timer, so cancel the timer
+                self.flush_timer[route_message_router].cancel()
                 self.invalid_timer[route_message_router].cancel()
                 self.invalid_timer[route_message_router].start()
                 
         else:
-            #if the new entry came in,
+
+            #if the new entry came in, 
             dest_port = route_message_data[2]
             #calls add_new_route
-            self.add_new_route(router_id, new_cost, dest_port, next_hop)
+            self.add_new_route(router_id, new_cost, to_sender_route_data[2], next_hop)
 
-            #creates a new instance of timer for running the invalidate function
+            #creates a new instance of timer for running the invalidate and flush function
             #put into a dictionary with the entry router name as the key
-            self.invalid_timer[route_message_router] = routeTimer(180, self.invalidate_, route_message_router)
+            self.invalid_timer[route_message_router] = routeTimer(45, self.invalidate_, route_message_router)
+            self.flush_timer[route_message_router] = routeTimer(60, self.flush_, route_message_router)
             #starts the invalid timer for the specific route
             self.invalid_timer[route_message_router].start()
             print('Invalid timer started for {}'.format(route_message_router))
@@ -348,12 +349,11 @@ def main():
         demon.recieve_message()
         demon.show_routes()
         #timer execute every 30 sec
-        Timer(30, update_timer).start()
+        Timer(12, update_timer).start()
 
     demon.load_startup()
     demon.bind_socket()
     demon.show_routes()
-    
     update_timer()
 
 main()
