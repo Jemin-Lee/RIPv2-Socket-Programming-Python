@@ -57,7 +57,6 @@ class RIP_demon(object):
         self.neighbor_port = []
         self.neighbor_id = []
         self.routes = {}
-        self.triggered_message = []
         self.config = configparser.ConfigParser()
         self.learned_routers = []
         self.route_message = None
@@ -110,7 +109,10 @@ class RIP_demon(object):
         reads all existing routes in the output ports and format them in a way that is readable and print
         '''
         now = datetime.now().time()
-        print("=================Show Routes=================")
+        print("!")
+        print("!")
+        print("!")
+        print("Show Routes")
         print('Router ID: {}, {}'.format(self.router_id, now))
         for key in self.routes:
             output = self.routes[key]
@@ -149,20 +151,14 @@ class RIP_demon(object):
         message.append(source)
         message.append(routes)
         return message
-    
-    # def rip_trigger(self):
-    #     '''
-    #     creates triggered message
-    #     '''
-    #     return
 
     def send_message(self):
         '''
         sending messages to neighbor ports
         '''
         now = datetime.now().time()
-
-        print("==========Send Message===========")
+        print("!")
+        print("!")
         for port in self.neighbor_port:
             #create message 
             message = self.create_message(port)
@@ -170,13 +166,27 @@ class RIP_demon(object):
             #sending router's whole output contents in pickle
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(update_message, ("127.0.0.1", int(port)))
-            print("Update message sent to port " + port + ", " + str(now))
+            print('{}, Update message sent to port {}'.format(now, port))
     
-    # def triggered_update(self):
-    #     '''
-    #     send triggered update
-    #     '''
-    #     return
+    def rip_trigger(self,router, route):
+        '''
+        send triggered update
+        avoid the parameter port from sending messages
+        '''
+        source = {}
+        source.update({self.router_id:"trigger"})
+        Tmessage = pickle.dumps([source, route])
+
+        print("!")
+        print("!")
+        for port in self.neighbor_port:
+            if route[2] == port:
+                pass
+            else:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.sendto(Tmessage, ("127.0.0.1", int(port)))
+                print('RIP trigger message sent to port {}'.format(port))
+    
 
     def bind_socket(self):
         for port in self.ingress:
@@ -185,39 +195,53 @@ class RIP_demon(object):
             self.ingress_sockets.append(sock)
     
     def recieve_message(self):
-        print("==========Ports Open===========")
+        now = datetime.now().time()
         #wait for 30 seconds for messages
         message, _, _ = select.select(self.ingress_sockets, [], [], 12)
         #current set to now
         current_time = time.time()
         #iterate through the current message
         for s in message:
-            print("===============Ports Closed===============")
             data, addr = s.recvfrom(1024)
             #load the message
             message_data = (pickle.loads(data))
             #set the current sender_id
             self.sender_id = list(message_data[0].keys())[0]
             sender_router = 'router{}'.format(self.sender_id)
-            if sender_router in self.invalid_timer.keys():
-                self.routes.pop(sender_router)
-                self.routes[sender_router] = self.neighbors[sender_router]
-                if sender_router in self.flush_timer.keys():
-                    self.flush_timer[sender_router].cancel()
-                self.invalid_timer[sender_router].cancel()
-                self.invalid_timer[sender_router].start()
-            else:
-                self.invalid_timer[sender_router] = routeTimer(45, self.invalidate_, sender_router)
-                self.flush_timer[sender_router] = routeTimer(60, self.flush_, sender_router)
-                self.invalid_timer[sender_router].start()
-                if sender_router in self.neighbors.keys():
-                    self.routes[sender_router] = self.neighbors[sender_router]
-
             update = message_data[1]
-            print('message from router {}'.format(self.sender_id))
-            for r_id in update:
-                self.route_message = update[r_id]
-                self.update_table()
+
+            if list(message_data[0].values())[0] == "update":
+                if sender_router in self.invalid_timer.keys():
+                    self.routes.pop(sender_router)
+                    self.routes[sender_router] = self.neighbors[sender_router]
+                    if sender_router in self.flush_timer.keys():
+                        self.flush_timer[sender_router].cancel()
+                    self.invalid_timer[sender_router].cancel()
+                    self.invalid_timer[sender_router].start()
+                else:
+                    self.invalid_timer[sender_router] = routeTimer(45, self.invalidate_, sender_router)
+                    self.flush_timer[sender_router] = routeTimer(60, self.flush_, sender_router)
+                    self.invalid_timer[sender_router].start()
+                    if sender_router in self.neighbors.keys():
+                        self.routes[sender_router] = self.neighbors[sender_router]
+                print("!")
+                print('{}, message from router {}'.format(now, self.sender_id))
+                print("!")
+                for r_id in update:
+                    self.route_message = update[r_id]
+                    self.update_table()
+
+            else:
+                if 'router{}'.format(message_data[1][0]) in self.routes.keys():
+                    print("!")
+                    print('recieved trigger update from {}'.format(self.sender_id))
+                    self.invalid_timer['router{}'.format(message_data[1][0])] = routeTimer(45, self.invalidate_, 'router{}'.format(message_data[1][0]))
+                    self.flush_timer['router{}'.format(message_data[1][0])] = routeTimer(60, self.flush_, 'router{}'.format(message_data[1][0]))
+                    self.invalidate_('router{}'.format(message_data[1][0]), True)
+                else:
+                    print("!")
+                    print('RIP Triggered, no update from {}'.format(sender_router))
+                    pass
 
     
     def flush_(self, router):
@@ -225,26 +249,35 @@ class RIP_demon(object):
         flush a route
         '''
         now = datetime.now().time()
-        print("===========Flush Route===========")
-        self.routes.pop(router)
-        self.flush_timer.pop(router)
-        self.invalid_timer.pop(router)
+        if router in self.routes.keys():
+            self.routes.pop(router)
+            self.flush_timer.pop(router)
+            self.invalid_timer.pop(router)
         print('{} route to {} deleted'.format(now, router))
     
-    def invalidate_(self, router):
+    def invalidate_(self, router, trigger=False):
         '''
         invalidate a route
         calls flush_timer
         '''
         now = datetime.now().time()
         self.routes[router][1] = "16"
-        print('{}, {} possibly down'.format(now, router))
-        #call flush timer
+        self.rip_trigger(router, self.routes[router])
+        if trigger:
+            self.invalid_timer[router].cancel()
+            print("!")
+            print('{}, {} down according to trigger update from router {}'.format(now, router, self.sender_id))
+        else:
+            print("!")
+            print('{}, {} invalid'.format(now, router))
         self.flush_timer[router].start()
+        #call flush timer
+        
 
     def update_route(self, id, cost, port, sender_id):
         dest_router = 'router{}'.format(id)
         self.routes[dest_router] = [id, cost, port, sender_id]
+        print("!")
         print('{} reachable via Port {} , Next Hop: {}, Metric: {}'.format(id, port, sender_id, cost))
 
     def update_table(self):
@@ -258,9 +291,11 @@ class RIP_demon(object):
         potential_new_cost = int(self.route_message[1]) + int(self.routes[sender_router][1]) + 1 #hop count 1
 
         #write on our config file with key = reachable id and value = altered route line
+        print("!")
         print('updating route, message from {}'.format(sender_router))
 
         if potential_new_cost > 15:
+            print("!")
             print('Metric 15 exceeded, router {} unreachable'.format(self.route_message[0]))
             pass
         else:
@@ -294,6 +329,7 @@ class RIP_demon(object):
                 self.flush_timer[dest_router] = routeTimer(60, self.flush_, dest_router)
                 #starts the invalid timer for the specific route
                 self.invalid_timer[dest_router].start()
+                print("!")
                 print('Invalid timer started for {}'.format(dest_router))
 
 
