@@ -176,11 +176,11 @@ class RIP_demon(object):
         source = {}
         source.update({self.router_id:"trigger"})
         Tmessage = pickle.dumps([source, route])
+        avoid =  self.routes[router][2]
 
         print("!")
-        print("!")
         for port in self.neighbor_port:
-            if route[2] == port:
+            if avoid == port:
                 pass
             else:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -232,11 +232,10 @@ class RIP_demon(object):
                     self.update_table()
 
             else:
-                if 'router{}'.format(message_data[1][0]) in self.routes.keys():
+                if 'router{}'.format(message_data[1][0]) in self.routes.keys() and sender_router == 'router{}'.format(self.routes['router{}'.format(message_data[1][0])][3]):
                     print("!")
-                    print('recieved trigger update from {}'.format(self.sender_id))
-                    self.invalid_timer['router{}'.format(message_data[1][0])] = routeTimer(45, self.invalidate_, 'router{}'.format(message_data[1][0]))
-                    self.flush_timer['router{}'.format(message_data[1][0])] = routeTimer(60, self.flush_, 'router{}'.format(message_data[1][0]))
+                    print('recieved trigger update from router {}'.format(self.sender_id))
+                    print(message_data)
                     self.invalidate_('router{}'.format(message_data[1][0]), True)
                 else:
                     print("!")
@@ -261,10 +260,10 @@ class RIP_demon(object):
         calls flush_timer
         '''
         now = datetime.now().time()
-        self.routes[router][1] = "16"
-        self.rip_trigger(router, self.routes[router])
+        if router in self.routes:
+            self.routes[router][1] = "16"
+            self.rip_trigger(router, self.routes[router])
         if trigger:
-            self.invalid_timer[router].cancel()
             print("!")
             print('{}, {} down according to trigger update from router {}'.format(now, router, self.sender_id))
         else:
@@ -296,18 +295,16 @@ class RIP_demon(object):
 
         if potential_new_cost > 15:
             print("!")
-            print('Metric 15 exceeded, router {} unreachable'.format(self.route_message[0]))
             pass
         else:
             #check if the entry exists in the current table, if so, 
             if dest_router in self.routes.keys():
                 #it compares the cost, if current entry is better,
                 if int(self.routes[dest_router][1]) <= potential_new_cost:
-                    print("no new routes")
                     pass
                 else:
                     #if the new cost is better, the destination port is set to the new one
-                    self.update_route(self.route_message[0], potential_new_cost, self.routes[dest_router][2], self.sender_id)
+                    self.update_route(self.route_message[0], potential_new_cost, self.routes[sender_router][2], self.sender_id)
                 '''
                 to test this,
                 start only two routers,
@@ -316,9 +313,11 @@ class RIP_demon(object):
                 and then see if the router invalidate, and flush the aged route.
                 '''
                 #entry router is in flush_timer, so cancel the timer
-                self.flush_timer[dest_router].cancel()
-                self.invalid_timer[dest_router].cancel()
-                self.invalid_timer[dest_router].start()
+                if dest_router in self.invalid_timer.keys():
+                    if dest_router in self.flush_timer.keys():
+                        self.flush_timer[dest_router].cancel()
+                    self.invalid_timer[dest_router].cancel()
+                    self.invalid_timer[dest_router].start()
                     
             else:
                 #if the new entry came in, add a new route
