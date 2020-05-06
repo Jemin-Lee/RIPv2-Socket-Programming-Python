@@ -100,6 +100,9 @@ class RIP_demon(object):
             for key,value in self.config.items("output-ports"):
                 line_in_output = value.split('-')
                 self.neighbors[key] = line_in_output
+                
+            for i in self.neighbor_id:
+                key = 'router{}'.format(i)
                 self.invalid_timer[key] = routeTimer(45, self.invalidate_, key)
                 self.flush_timer[key] = routeTimer(60, self.flush_, key)
                 self.invalid_timer[key].start()
@@ -209,8 +212,13 @@ class RIP_demon(object):
             self.sender_id = list(message_data[0].keys())[0]
             sender_router = 'router{}'.format(self.sender_id)
             update = message_data[1]
+            print(update)
 
             if list(message_data[0].values())[0] == "update":
+                if sender_router in self.neighbors:
+                    print("why")
+                    print(self.neighbors)
+                    self.routes[sender_router] = self.neighbors[sender_router]
                 if sender_router in self.invalid_timer.keys():
                     self.routes.pop(sender_router)
                     self.routes[sender_router] = self.neighbors[sender_router]
@@ -261,7 +269,10 @@ class RIP_demon(object):
         '''
         now = datetime.now().time()
         if router in self.routes:
-            self.routes[router][1] = "16"
+            if router in self.neighbors:
+                self.routes.update({router:[self.neighbors[router][0],"16",self.neighbors[router][2],self.neighbors[router][3]]})
+            else:
+                self.routes[router][1] = "16"
             self.rip_trigger(router, self.routes[router])
         if trigger:
             print("!")
