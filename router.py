@@ -212,7 +212,6 @@ class RIP_demon(object):
             self.sender_id = list(message_data[0].keys())[0]
             sender_router = 'router{}'.format(self.sender_id)
             update = message_data[1]
-            print(update)
 
             if list(message_data[0].values())[0] == "update":
                 if sender_router in self.neighbors:
