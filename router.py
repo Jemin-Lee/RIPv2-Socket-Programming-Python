@@ -216,8 +216,6 @@ class RIP_demon(object):
 
             if list(message_data[0].values())[0] == "update":
                 if sender_router in self.neighbors:
-                    print("why")
-                    print(self.neighbors)
                     self.routes[sender_router] = self.neighbors[sender_router]
                 if sender_router in self.invalid_timer.keys():
                     self.routes.pop(sender_router)
