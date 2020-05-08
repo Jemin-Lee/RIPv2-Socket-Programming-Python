@@ -153,6 +153,7 @@ class RIP_demon(object):
         message = []
         message.append(source)
         message.append(routes)
+        print(message)
         return message
 
     def send_message(self):
